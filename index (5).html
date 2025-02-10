@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=Edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>HTML</title>
+  
+  <!-- HTML -->
+  
+
+  <!-- Custom Styles -->
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <!-- Project -->
+  <script src="main.js"></script>
+  
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Global</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #18191c; color: white; text-align: center; }
+        #chat { width: 300px; height: 400px; overflow-y: auto; border: 1px solid #444; margin: 10px auto; padding: 10px; background: #242526; border-radius: 5px; }
+        input, button { margin: 5px; padding: 10px; border: none; border-radius: 5px; font-size: 16px; }
+        input { width: 80%; background: #3a3b3c; color: white; }
+        button { background: #0084ff; color: white; cursor: pointer; }
+        button:hover { background: #006edc; }
+        .mensagem { text-align: left; padding: 5px; border-bottom: 1px solid #333; }
+        .dono { color: gold; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div id="auth-container">
+        <h2>Login / Cadastro</h2>
+        <input type="text" id="username" placeholder="Nome de usuário">
+        <input type="email" id="email" placeholder="Email">
+        <input type="password" id="senha" placeholder="Senha">
+        <button onclick="cadastrar()">Cadastrar</button>
+        <button onclick="login()">Entrar</button>
+    </div>
+
+    <div id="chat-container" style="display: none;">
+        <h3>Bem-vindo, <span id="usuario-nome"></span></h3>
+        <select id="salas">
+            <option value="geral">Geral</option>
+            <option value="suporte">Suporte</option>
+        </select>
+        <div id="chat"></div>
+        <input type="text" id="mensagem" placeholder="Digite uma mensagem">
+        <button onclick="enviarMensagem()">Enviar</button>
+        <button onclick="logout()">Sair</button>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.3.0/firebase-app.js";
+        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.3.0/firebase-auth.js";
+        import { getDatabase, ref, push, set, onChildAdded, get } from "https://www.gstatic.com/firebasejs/11.3.0/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyA1p3C-iRQ8YN4zuZgdE9cymUVYDiIaCcM",
+            authDomain: "mensagens-f4e31.firebaseapp.com",
+            databaseURL: "https://mensagens-f4e31-default-rtdb.firebaseio.com",
+            projectId: "mensagens-f4e31",
+            storageBucket: "mensagens-f4e31.appspot.com",
+            messagingSenderId: "686232522910",
+            appId: "1:686232522910:web:d754fb4926802bbaf1eb8f",
+            measurementId: "G-4LRBJ623X3"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth();
+        const db = getDatabase(app);
+
+        // Hash do seu email criptografado
+        const DONO_HASH = "3f7b774e0f7d52b3b6a7f558e1f0c8d3c7c4e1aa5f5e6c6d2c6e9e2e5e1b5b6b";
+
+        let usuarioNome = "";
+
+        async function hashEmail(email) {
+            const encoder = new TextEncoder();
+            const data = encoder.encode(email);
+            const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+            return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
+        }
+
+        window.cadastrar = async function () {
+            const username = document.getElementById("username").value.trim();
+            const email = document.getElementById("email").value;
+            const senha = document.getElementById("senha").value;
+
+            if (!username) {
+                alert("Escolha um nome de usuário!");
+                return;
+            }
+
+            const usernameRef = ref(db, "usuarios/" + username);
+            const usernameSnap = await get(usernameRef);
+
+            if (usernameSnap.exists()) {
+                alert("Nome de usuário já está em uso.");
+                return;
+            }
+
+            createUserWithEmailAndPassword(auth, email, senha)
+                .then(async (userCredential) => {
+                    await set(usernameRef, { email: email, moderador: false, banido: false });
+                    alert("Conta criada com sucesso!");
+                })
+                .catch(error => {
+                    alert("Erro ao cadastrar: " + error.message);
+                });
+        };
+
+        window.login = function () {
+            const email = document.getElementById("email").value;
+            const senha = document.getElementById("senha").value;
+
+            signInWithEmailAndPassword(auth, email, senha)
+                .catch(error => {
+                    alert("Erro ao entrar: " + error.message);
+                });
+        };
+
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                const emailHash = await hashEmail(user.email);
+                usuarioNome = document.getElementById("username").value.trim();
+                if (!usuarioNome) usuarioNome = "Usuário";
+
+                document.getElementById("usuario-nome").innerText = usuarioNome;
+                document.getElementById("auth-container").style.display = "none";
+                document.getElementById("chat-container").style.display = "block";
+
+                carregarMensagens(emailHash);
+            }
+        });
+
+        function carregarMensagens(emailHash) {
+            const chatRef = ref(db, "salas/geral/mensagens");
+            document.getElementById("chat").innerHTML = "";
+
+            onChildAdded(chatRef, (snapshot) => {
+                const dados = snapshot.val();
+                const msgDiv = document.createElement("div");
+                msgDiv.classList.add("mensagem");
+
+                if (emailHash === DONO_HASH) {
+                    msgDiv.classList.add("dono");
+                }
+
+                msgDiv.innerHTML = `<strong>${dados.usuario}:</strong> ${dados.texto}`;
+                document.getElementById("chat").appendChild(msgDiv);
+            });
+        }
+
+        window.logout = function () {
+            signOut(auth);
+        };
+
+        window.enviarMensagem = function () {
+            const mensagem = document.getElementById("mensagem").value.trim();
+            if (!mensagem) return;
+            push(ref(db, "salas/geral/mensagens"), { usuario: usuarioNome, texto: mensagem, timestamp: Date.now() });
+            document.getElementById("mensagem").value = "";
+        };
+    </script>
+
+</body>
+</html>
+  
+</body>
+</html>
